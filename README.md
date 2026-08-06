@@ -1,46 +1,5 @@
 # CodeHacker
 
-这是论文 [CodeHacker: Automated Test Case Generation for Detecting Vulnerabilities in Competitive Programming Solutions](https://aclanthology.org/2026.acl-long.108/) 的一个**最小、可运行的 2-phase 复现**。
-
-当前版本复现的是论文的核心控制流：先对抗式校准评测工具，再针对具体错误代码生成并验证 hack case。默认提供完全离线、结果确定的 Codeforces 1388A demo；也可以通过 `LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL` 接入任意 OpenAI-compatible endpoint，让真实模型担任 Code Analyst。
-
-> 本仓库目前是教学/工程骨架，不是论文完整实验代码。它不包含 CodeHackerBench、RL 训练、Codeforces MinGW 隔离环境或 LLL anti-hash 实现。
-
-## 方法概览
-
-论文把一次成功 hack 定义为同时满足：
-
-1. 输入通过校准后的 Validator；
-2. 标准解在该输入上可被校准后的 Checker 接受；
-3. 目标提交得到非 AC 结果（WA/RE/TLE/MLE）。
-
-```mermaid
-flowchart LR
-    subgraph P1["Phase I - Evaluation Tool Calibration"]
-        A["生成 Validator 草稿"] --> B["无效输入绕过 / 合法输入误拒"]
-        B -->|"发现 FP/FN"| A
-        B -->|"连续 K 轮无失败"| C["生成 Checker 草稿"]
-        C --> D["错误输出误收 / 正确输出误拒"]
-        D -->|"发现 FP/FN"| C
-        D -->|"连续 K 轮无失败"| E["校准后的 Validator + Checker"]
-    end
-
-    subgraph P2["Phase II - Adversarial Case Generation"]
-        F["Code Analyst"] --> G["Stress"]
-        F --> H["Logic / LLM-guided"]
-        F --> I["Anti-hash"]
-        G --> J["候选输入"]
-        H --> J
-        I --> J
-        J --> K["标准解 + 目标提交 + 校准评测链"]
-        K --> L["AC 或 Successful Hack"]
-    end
-
-    E --> K
-```
-
-Phase I 的停止条件与论文附录 Algorithm 1/2 一致：攻击成功时将连续无失败计数清零、把失败样例反馈给工具生成器；攻击失败时计数加一；达到 `K` 后结束校准。本 demo 默认 `K=2`。
-
 ## 快速开始
 
 只要求 Python 3.10+：
@@ -151,11 +110,7 @@ tests/
 
 `Judge` 会先过滤非法输入，并要求 reference solution 的输出通过 Checker；因此无效 case 或损坏的评测基础设施不会被误记为 successful hack。当前轻量执行器会识别 AC、WA 和 Python 异常对应的 RE；TLE/MLE 枚举已预留，需由真实沙箱后端返回。
 
-## 复现边界
 
-- demo 复现的是论文的算法结构和反馈闭环，不复现表 1-5 的大规模实验数值；
-- 确定性 Agent 用于保证示例随时可运行，它不是论文所用模型的效果替代品；
-- 正式评测时应使用与目标 OJ 一致的编译器、资源限制和 Special Judge 语义。
 
 ## 引用
 
