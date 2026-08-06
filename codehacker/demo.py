@@ -21,6 +21,7 @@ from .core import (
     run_phase_two,
 )
 from .llm import LLMConfig, OpenAICompatibleLLM, TextLLM
+from .prompts import CODE_ANALYST_JSON_PROMPT
 
 
 PROBLEM_SPEC = """Codeforces 1388A - Captain Flint and Crew Recruitment
@@ -312,17 +313,13 @@ class LLMCaptainFlintAnalyst:
         self.llm = llm
 
     def analyze(self, target_source: str) -> HackPlan:
+        prompt = CODE_ANALYST_JSON_PROMPT.render(
+            problem_description=PROBLEM_SPEC,
+            target_code=target_source,
+        )
         response = self.llm.complete(
-            """You are the Code Analyst in the CodeHacker framework.
-Analyze a competitive-programming submission and return only one JSON object:
-{
-  "bug_type": "WA|RE|TLE|MLE|unknown",
-  "hypothesis": "short explanation",
-  "trigger_values": [integer test values],
-  "uses_hashing": false
-}
-Every trigger must satisfy the stated input constraints. Do not include Markdown.""",
-            f"Problem specification:\n{PROBLEM_SPEC}\nTarget code:\n{target_source}",
+            "You are the Code Analyst in the CodeHacker two-phase framework.",
+            prompt,
             temperature=0.7,
         )
         payload = _parse_json_object(response)

@@ -10,6 +10,16 @@ from codehacker.demo import (
 )
 from codehacker.core import calibrate_checker, calibrate_validator
 from codehacker.llm import LLMConfig, OpenAICompatibleLLM
+from codehacker.prompts import (
+    ANTI_HASH_GENERATOR_PROMPT,
+    APPENDIX_L_PROMPTS,
+    AppendixLPromptRunner,
+    BUG_DISCOVERY_GENERATOR_PROMPT,
+    CHECKER_HACK_PROMPT,
+    CODE_ANALYST_TOOL_PROMPT,
+    STRESS_GENERATOR_PROMPT,
+    VALIDATOR_HACK_PROMPT,
+)
 
 
 def test_phase_one_repairs_false_positives_and_false_negatives() -> None:
@@ -117,3 +127,64 @@ def test_real_llm_adapter_can_drive_the_analyst_without_network() -> None:
 
     assert len(report.phase_two.successful_hacks) == 3
     assert completions.kwargs["model"] == "test-model"
+    analyst_prompt = completions.kwargs["messages"][1]["content"]
+    assert "6 10 14" in analyst_prompt
+    assert "trigger_values" in analyst_prompt
+
+
+def test_appendix_l_exposes_all_six_prompt_roles() -> None:
+    assert set(APPENDIX_L_PROMPTS) == {
+        "checker_hack",
+        "validator_hack",
+        "code_analyst_tool",
+        "stress_generator",
+        "bug_discovery_generator",
+        "anti_hash_generator",
+    }
+
+
+def test_appendix_l_prompts_render_without_unresolved_placeholders() -> None:
+    rendered = (
+        CHECKER_HACK_PROMPT.render(
+            problem_description="problem", checker_code="checker"
+        ),
+        VALIDATOR_HACK_PROMPT.render(
+            problem_description="problem", validator_code="validator"
+        ),
+        CODE_ANALYST_TOOL_PROMPT.render(
+            problem_description="problem", target_code="target"
+        ),
+        STRESS_GENERATOR_PROMPT.render(problem_description="problem"),
+        BUG_DISCOVERY_GENERATOR_PROMPT.render(
+            problem_description="problem",
+            incorrect_code="target",
+            hash_collision_data="not available",
+        ),
+        ANTI_HASH_GENERATOR_PROMPT.render(
+            problem_description="problem", target_code="target"
+        ),
+    )
+
+    assert all("{{" not in prompt and "}}" not in prompt for prompt in rendered)
+    assert "run_python" in rendered[2]
+    assert "run_cpp" in rendered[2]
+    assert "expected_validity" in rendered[1]
+
+
+def test_appendix_l_runner_sends_rendered_role_to_llm() -> None:
+    class FakeLLM:
+        def complete(self, system_prompt, user_prompt, *, temperature=0.7):
+            self.call = (system_prompt, user_prompt, temperature)
+            return '{"test_cases": []}'
+
+    llm = FakeLLM()
+    result = AppendixLPromptRunner(llm).run(
+        "checker_hack",
+        problem_description="sum two integers",
+        checker_code="return true;",
+    )
+
+    assert result == '{"test_cases": []}'
+    assert "checker_hack" in llm.call[0]
+    assert "sum two integers" in llm.call[1]
+    assert "return true;" in llm.call[1]

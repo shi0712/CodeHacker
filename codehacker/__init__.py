@@ -13,14 +13,18 @@ from .core import (
     run_phase_two,
 )
 from .llm import LLMConfig, OpenAICompatibleLLM, TextLLM
+from .prompts import APPENDIX_L_PROMPTS, AppendixLPromptRunner, PromptTemplate
 
 __all__ = [
     "CalibrationResult",
+    "APPENDIX_L_PROMPTS",
+    "AppendixLPromptRunner",
     "CheckerProbe",
     "HackCandidate",
     "Judge",
     "LLMConfig",
     "OpenAICompatibleLLM",
+    "PromptTemplate",
     "PhaseTwoReport",
     "ValidationProbe",
     "Verdict",

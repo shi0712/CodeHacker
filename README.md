@@ -74,6 +74,45 @@ cout << "6 10 14 " << n - 30 << "\n";
 
 Phase I 先修复一个故意有缺陷的 Validator 和 Checker；Phase II 的 Analyst 再从固定构造中推导 `n - 30 ∈ {6, 10, 14}`，由 logic-guided generator 生成三个合法反例。Stress generator 同时覆盖最小值、可行性边界和最大值；Anti-hash 模块检测到目标不使用哈希后保持空闲。
 
+## Appendix L 提示词模板
+
+论文附录给出了完整的 Agent 提示词体系，本仓库在 [`codehacker/prompts.py`](codehacker/prompts.py) 中提供了结构等价、可直接渲染的工程化版本：
+
+| Registry key | Appendix L 角色 | 输入 |
+| --- | --- | --- |
+| `checker_hack` | Checker false-positive / false-negative attack | problem、checker code |
+| `validator_hack` | Validator bypass / rejection attack | constraints、validator code |
+| `code_analyst_tool` | 多轮 Code Analyst | problem、target code、execution tools |
+| `stress_generator` | 随机/边界 C++ generator | problem |
+| `bug_discovery_generator` | 漏洞定向 C++ generator | problem、incorrect code、optional collision data |
+| `anti_hash_generator` | Rolling-hash 参数提取 | problem、target code |
+
+```python
+from codehacker import APPENDIX_L_PROMPTS
+
+prompt = APPENDIX_L_PROMPTS["validator_hack"].render(
+    problem_description=problem_text,
+    validator_code=validator_source,
+)
+```
+
+要直接用 `.env` 中配置的模型执行某个角色：
+
+```python
+from codehacker import AppendixLPromptRunner, LLMConfig, OpenAICompatibleLLM
+
+runner = AppendixLPromptRunner(OpenAICompatibleLLM(LLMConfig.from_env()))
+response = runner.run(
+    "checker_hack",
+    problem_description=problem_text,
+    checker_code=checker_source,
+)
+```
+
+模板使用严格命名参数：缺少参数或传入未知参数都会报错，避免把 `{problem_description}` 一类占位符意外发送给模型。字段结构、双向攻击目标、工具协议和 generator 约束均来自 Appendix L；文字做了工程化改写并标注来源。
+
+论文的 `code_analyst_tool` 假定宿主提供 `run_python`、`run_cpp`、`finish` 三个多轮工具。轻量 demo 不会直接执行模型生成的任意代码，因此 `--use-llm` 使用同文件中的 `code_analyst_json_demo` 安全适配模板；接入隔离沙箱后可切换到完整 tool-mode 模板。
+
 ## 代码结构
 
 ```text
@@ -81,6 +120,7 @@ codehacker/
 ├── core.py        # 通用 Phase I 校准循环、Judge 与 Phase II 调度
 ├── demo.py        # 1388A 的 Validator/Checker/Analyst/Generators
 ├── llm.py         # Key/Base URL 配置和 OpenAI-compatible 客户端
+├── prompts.py     # Appendix L 六套提示词和安全 demo 适配模板
 └── __init__.py
 .env.example       # 不含秘密的环境变量模板
 tests/
@@ -95,6 +135,7 @@ tests/
 | Checker Refinement (Algorithm 2) | `calibrate_checker` + `CheckerAgent` |
 | Code Analyst | `CaptainFlintAnalyst` / `LLMCaptainFlintAnalyst` |
 | Stress / LLM-based / Anti-hash | `StressGenerator` / `LogicGuidedGenerator` / `AntiHashGenerator` |
+| Appendix L Prompt Templates | `APPENDIX_L_PROMPTS` / `PromptTemplate.render` |
 | 三项 hack 判定条件 | `Judge.evaluate` |
 | Phase II 迭代 | `run_phase_two` |
 
@@ -102,15 +143,13 @@ tests/
 
 `--use-llm` 已经会通过配置的 endpoint 调用真实模型完成 Code Analyst 阶段。核心层只依赖 Python Protocol，要把模型进一步接入 Phase I 和其他 Phase II 模块，可替换 demo 中的确定性组件：
 
-1. 实现 `ValidatorAgent` 和 `CheckerAgent`，在 `initial/attack/refine` 中调用模型；
+1. 实现 `ValidatorAgent` 和 `CheckerAgent`，在 `initial/attack/refine` 中调用 `validator_hack`、`checker_hack` 模板；
 2. 对 Checker 的 `y_true` 使用标准解或独立 judge 交叉验证后再反馈，避免把幻觉写入评测工具；
 3. 实现新的 `CaseGenerator.generate(plan)`，让模型输出输入生成器源码而非超长原始输入；
 4. 将 `Judge` 的函数式 `Submission` 替换为带编译、超时、内存限制和进程隔离的执行后端；
 5. 对 rolling hash 目标补充 LLL/SVP 或 birthday-attack generator。
 
 `Judge` 会先过滤非法输入，并要求 reference solution 的输出通过 Checker；因此无效 case 或损坏的评测基础设施不会被误记为 successful hack。当前轻量执行器会识别 AC、WA 和 Python 异常对应的 RE；TLE/MLE 枚举已预留，需由真实沙箱后端返回。
-
-
 
 ## 引用
 
